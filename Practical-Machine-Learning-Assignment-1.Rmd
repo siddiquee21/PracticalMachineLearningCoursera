@@ -1,0 +1,138 @@
+---
+title: "Activity Recognition Using Predictive Analytics"
+author: "Mohd.Faijanur-Rob-Siddiquee"
+date: "September 23, 2020"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+## Overview
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively. The aim of this project is to predict the manner in which participants perform a barbell lift. The data comes from http://groupware.les.inf.puc-rio.br/har wherein 6 participants were asked to perform the same set of exercises correctly and incorrectly with accelerometers placed on the belt, forearm, arm, and dumbell.  
+
+For the purpose of this project, the following steps would be followed:
+
+1. Data Preprocessing.
+2. Model Selection.
+3. Validating the Model.
+4. Final Model Testing.
+
+## Data Preprocessing 
+
+First, we load the training and testing set from the online sources and then split the training set further into training and test sets. 
+
+```{r DataLoading, message = FALSE}
+library(caret)
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if (!file.exists("training.csv")){
+    download.file(trainurl, "training.csv")
+}
+if (!file.exists("testing.csv")){
+    download.file(testurl, "testing.csv")
+}
+training <- read.csv("training.csv")
+testing  <- read.csv("testing.csv")
+```
+
+```{r}
+dim(training)
+dim(testing)
+str(training)
+```
+
+It could be seen that there are 19622 rows and around 160 columns in the training dataset and the testing dataset contains the same number of columns (i.e., 160) and only 20 columns. 
+
+###  DataCleaning
+
+As we can see that in the training dataset, which has 19622 row and 160 columns, most of them are mostly filled with NA and empty values and the first 7 ones are just not related to the functioning of the model as they mostly talk about ID and stamps
+So lets clean the training data and remove them on the basis that if the column has more than 90% of its values as NAs or Empty will be removed.
+
+```{r}
+empty_cols <- which(colSums(is.na(training) | training == "") > 0.9*dim(training)[1])
+clean_training <- training[, -empty_cols]
+clean_training <- clean_training[, -(1:7)]
+
+dim(clean_training)
+```
+
+Now lets see that if the available variables contain a bit of significant variation in them otherwise they would not be much helpful for the training of the machine learning algorithm.
+
+```{r}
+no_var <- nearZeroVar(clean_training)
+no_var
+```
+
+This means that all the current variables report some variation, i.e., we do not need to remove any more variables from the data set.
+
+### Data Partition
+
+In this step, we are just splitting the data in the ratio of 70 to 30 percents. The 70 percent of the data will be used for training the algorithm and the remaining 30 percent will be used to test its accuracy.
+
+```{r}
+set.seed(7777) ## Setting the seed for reproducibility
+
+in_train <- createDataPartition(clean_training$classe, p = 0.7, list = FALSE)
+train_data <- clean_training[in_train, ]
+test_data <- clean_training[-in_train, ]
+dim(train_data)
+```
+
+
+
+## Model Selection
+
+### Building the Models
+
+1. It is determined that this is a classification problem and the aim of the comparison is to discover which algorithm suits the data better.
+2. For this problem the 2 best methods which could be selected could be the Random Forest and Gradient Boosting Methods
+3. The Kappa metric is selected as the comparison criteria.
+4. To reduce the risk of over fitting, a 10-fold cross validation is employed during model building.
+
+```{r}
+set.seed(7777) ## Setting the seed for reproducibility
+fitControl <- trainControl(method = "cv", number = 10)
+gbm_fit <- train(classe ~ ., data = train_data, method = "gbm", metric = "Kappa", trControl = fitControl, verbose = FALSE)
+rf_fit <- train(classe ~ ., data = train_data, method = "rf", metric = "Kappa", trControl = fitControl)
+```
+
+### Comparing the models
+
+```{r}
+library(lattice)
+r_vals <- resamples(list(rf = rf_fit, gbm = gbm_fit))
+summary(r_vals)
+```
+
+```{r}
+bwplot(r_vals, metric = "Kappa", main = "Random Forest vs Gradient Boosting")
+```
+
+
+* The models are then compared using the `resamples` function
+* Based on the plot above, it can be determined that the Random Forest algorithm fares better than the Gradient Boosting algorithm for this data set, achieving a Kappa mean value of 0.99. It can also be seen that the Random Forest algorithm also displays less spread than Gradient Boosting.
+* Therefor, taking the Random Forest model for the data set.
+
+## Validating the Model
+
+```{r}
+rf_fit
+```
+
+Now lets use the `confusionMatrix` function from the caret package on this modeland try to predict the test set
+
+```{r}
+confusionMatrix(as.factor(test_data$classe), predict(rf_fit, test_data))
+```
+
+
+## Final Model Testing
+
+#### Here are the final results
+
+```{r}
+final_results <- predict(rf_fit, newdata = testing)
+as.data.frame(final_results)
+```
